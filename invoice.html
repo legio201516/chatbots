@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ledger — Invoice Extraction</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f5f0e8; --surface: #faf7f2; --surface2: #ede8de;
+    --border: rgba(0,0,0,0.09); --border2: rgba(0,0,0,0.16);
+    --text: #1a1714; --text-muted: #6b6457; --text-dim: #b0a898;
+    --accent: #1a4a2e; --accent-light: #2d6e46; --error: #8b2020;
+    --radius: 10px;
+    --font-serif: 'Playfair Display', Georgia, serif;
+    --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 13px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+  .app { display: flex; flex-direction: column; height: 100vh; max-width: 1100px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 18px 32px 14px; border-bottom: 1px solid var(--border2); flex-shrink: 0; background: var(--surface); }
+  .logo { display: flex; align-items: baseline; gap: 10px; }
+  .logo-name { font-family: var(--font-serif); font-size: 20px; color: var(--text); letter-spacing: -0.01em; }
+  .logo-tag { font-size: 11px; color: var(--text-muted); letter-spacing: 0.1em; text-transform: uppercase; }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .lang-switcher { display: flex; gap: 4px; }
+  .lang-btn { background: transparent; border: 1px solid var(--border2); border-radius: 4px; color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px 7px; cursor: pointer; transition: all 0.15s; letter-spacing: 0.05em; }
+  .lang-btn:hover { border-color: var(--accent-light); color: var(--text); }
+  .lang-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(26,74,46,0.07); }
+  .model-badge { font-size: 11px; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 2px 8px; letter-spacing: 0.05em; }
+  .status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); transition: background 0.4s; }
+  .status-dot.online { background: #2d6e46; box-shadow: 0 0 6px rgba(45,110,70,0.4); }
+  .status-dot.thinking { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
+  .panel-left { display: flex; flex-direction: column; border-right: 1px solid var(--border2); padding: 28px 32px; gap: 16px; }
+  .panel-label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted); display: flex; align-items: center; gap: 8px; }
+  .panel-label::after { content: ''; flex: 1; height: 1px; background: var(--border2); }
+  .invoice-area { flex: 1; width: 100%; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); padding: 16px; color: var(--text); font-family: var(--font-mono); font-size: 13px; line-height: 1.7; resize: none; outline: none; transition: border-color 0.2s; }
+  .invoice-area:focus { border-color: var(--accent); }
+  .invoice-area::placeholder { color: var(--text-dim); }
+  .action-row { display: flex; gap: 10px; align-items: center; }
+  .btn-analyse { flex: 1; padding: 11px 20px; background: var(--accent); color: #f5f0e8; border: none; border-radius: var(--radius); font-family: var(--font-mono); font-size: 13px; letter-spacing: 0.04em; cursor: pointer; transition: all 0.15s; }
+  .btn-analyse:hover { background: var(--accent-light); }
+  .btn-analyse:active { transform: scale(0.98); }
+  .btn-analyse:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .btn-clear { padding: 11px 14px; background: transparent; color: var(--text-muted); border: 1px solid var(--border2); border-radius: var(--radius); font-family: var(--font-mono); font-size: 12px; cursor: pointer; transition: all 0.15s; }
+  .btn-clear:hover { border-color: var(--error); color: var(--error); }
+  .examples { display: flex; flex-wrap: wrap; gap: 6px; }
+  .example-chip { font-size: 11px; color: var(--text-muted); border: 1px dashed var(--border2); border-radius: 6px; padding: 4px 10px; cursor: pointer; transition: all 0.15s; }
+  .example-chip:hover { border-color: var(--accent); color: var(--accent); }
+  .panel-right { display: flex; flex-direction: column; padding: 28px 32px; gap: 16px; overflow: hidden; }
+  .result-area { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+  .result-area::-webkit-scrollbar { width: 4px; }
+  .result-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .empty-state { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text-dim); text-align: center; padding: 40px; }
+  .empty-icon { font-size: 32px; opacity: 0.4; }
+  .empty-state p { font-size: 12px; max-width: 240px; line-height: 1.6; }
+  .result-content { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 20px 22px; color: var(--text); line-height: 1.75; white-space: pre-wrap; word-break: break-word; animation: fadeUp 0.25s ease both; font-size: 13px; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .cursor { display: inline-block; width: 6px; height: 13px; background: var(--accent); margin-left: 2px; vertical-align: text-bottom; animation: blink 0.9s step-end infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  .result-meta { font-size: 11px; color: var(--text-dim); padding-top: 8px; display: flex; justify-content: flex-end; }
+  footer { padding: 10px 32px; border-top: 1px solid var(--border); background: var(--surface); font-size: 11px; color: var(--text-dim); display: flex; justify-content: space-between; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <span class="logo-name">Ledger</span>
+      <span class="logo-tag" id="logoTag">Invoice Extraction</span>
+    </div>
+    <div class="header-right">
+      <div class="lang-switcher">
+        <button class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button class="lang-btn" onclick="setLang('fr')">FR</button>
+        <button class="lang-btn" onclick="setLang('de')">DE</button>
+      </div>
+      <span class="model-badge">32B · pro</span>
+      <div class="status">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">connecting…</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="panel-left">
+      <div class="panel-label" id="labelInput">Raw invoice</div>
+      <textarea class="invoice-area" id="invoiceInput"></textarea>
+      <div class="examples">
+        <span class="example-chip" id="exampleChip" onclick="fillExample()">📄 Load example</span>
+      </div>
+      <div class="action-row">
+        <button class="btn-clear" id="btnClear" onclick="clearAll()">Clear</button>
+        <button class="btn-analyse" id="analyseBtn" onclick="analyse()" disabled>Analyse invoice →</button>
+      </div>
+    </div>
+    <div class="panel-right">
+      <div class="panel-label" id="labelOutput">Structured extraction</div>
+      <div class="result-area" id="resultArea">
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <p id="emptyText">Results will appear here — amounts, VAT, vendor, due date and flagged anomalies.</p>
+        </div>
+      </div>
+      <div class="result-meta" id="resultMeta"></div>
+    </div>
+  </div>
+
+  <footer>
+    <span id="footerLeft">Local infrastructure · data never sent to third parties</span>
+    <span id="footerRight">—</span>
+  </footer>
+</div>
+
+<script>
+const API_URL = "https://gpuservfranklinpaul.ddns.net/v1";
+const API_KEY = "ocw-61e430db6ef31b79ee57d5a474efe3c8";
+const MODEL   = "pro";
+
+const T = {
+  en: {
+    logoTag: "Invoice Extraction",
+    statusConnecting: "connecting…", statusOnline: "online", statusOffline: "offline", statusThinking: "analysing…",
+    labelInput: "Raw invoice", labelOutput: "Structured extraction",
+    placeholder: `Paste the raw text of your invoice here…\n\nExample:\nINVOICE N° 2024-0892\nDate: 15/11/2024\nVendor: ACME Ltd — VAT 123 456 789\nClient: My Company Inc.\n\nDescription           Qty   Unit price    Total\nConsulting services    3      850.00    2,550.00\nSoftware licence       1      490.00      490.00\n\nSubtotal excl. VAT            3,040.00\nVAT 20%                         608.00\nTOTAL incl. VAT               3,648.00\n\nIBAN: FR76 1234 5678 9012 3456 7890 123\nPayment terms: 30 days`,
+    exampleChip: "📄 Load example", btnClear: "Clear", btnAnalyse: "Analyse invoice →",
+    emptyText: "Results will appear here — amounts, VAT, vendor, due date and flagged anomalies.",
+    footerLeft: "Local infrastructure · data never sent to third parties",
+    generatedIn: "Generated in", characters: "characters", model: "Model", serverUnreachable: "Server unreachable", errorPrefix: "Error",
+    userMsg: "Here is the invoice to analyse:",
+    system: `You are an expert accounting assistant. When given the text of an invoice, you systematically extract and structure the following information:
+
+**GENERAL INFORMATION**
+- Invoice number
+- Issue date
+- Due date / payment terms
+
+**VENDOR**
+- Company name
+- VAT / registration number
+- Address
+
+**CLIENT**
+- Company name
+- Client reference if present
+
+**AMOUNTS**
+- Total excl. VAT
+- VAT rate (and VAT amount)
+- Total incl. VAT
+- Deposit / balance due if mentioned
+
+**LINE ITEMS** (condensed table)
+
+**PAYMENT**
+- IBAN / bank details
+- Payment method
+
+**FLAGS** (anomalies, missing fields, calculation inconsistencies)
+
+Always respond in a clear, structured format. If a piece of information is absent, write "Not mentioned".`,
+    example: `INVOICE N° 2024-1147
+Issue date: 03/12/2024
+Due date: 02/01/2025 (30 days net)
+
+VENDOR
+Pixel Web Agency Ltd
+12 Republic Street, Lyon 69002
+VAT number: FR12 823456789
+
+CLIENT
+Sunshine Bakery LLC
+45 Foch Avenue, Toulouse 31000
+Client ref: CLI-0892
+
+DESCRIPTION                              QTY    UNIT PRICE    TOTAL
+WordPress showcase website creation        1      2,400.00   2,400.00
+Online booking module integration          1        800.00     800.00
+Admin training (4h)                        1        320.00     320.00
+Monthly maintenance (Dec. 2024)            1        120.00     120.00
+
+                        SUBTOTAL excl. VAT    3,640.00
+                        VAT 20%                 728.00
+                        TOTAL incl. VAT       4,368.00
+
+Payment method: Bank transfer
+IBAN: FR76 3000 6000 0112 3456 7890 189
+BIC: CMCIFRPP
+
+Late payment penalties: 3x legal rate. Early payment discount: none.`
+  },
+
+  fr: {
+    logoTag: "Extraction Comptable",
+    statusConnecting: "connexion…", statusOnline: "en ligne", statusOffline: "hors ligne", statusThinking: "analyse…",
+    labelInput: "Facture brute", labelOutput: "Extraction structurée",
+    placeholder: `Collez ici le texte brut de la facture…\n\nExemple :\nFACTURE N° 2024-0892\nDate : 15/11/2024\nFournisseur : ACME SARL — SIRET 123 456 789 00010\nClient : Mon Entreprise SAS\n\nDésignation          Qté   PU HT    Total HT\nPrestation conseil    3    850,00   2 550,00\nLicence logiciel      1    490,00     490,00\n\nSous-total HT                      3 040,00\nTVA 20%                              608,00\nTOTAL TTC                          3 648,00\n\nIBAN : FR76 1234 5678 9012 3456 7890 123\nÉchéance : 30 jours`,
+    exampleChip: "📄 Charger un exemple", btnClear: "Effacer", btnAnalyse: "Analyser la facture →",
+    emptyText: "Le résultat apparaîtra ici — montant, TVA, fournisseur, échéance et anomalies détectées.",
+    footerLeft: "Infrastructure locale · données non transmises à des tiers",
+    generatedIn: "Généré en", characters: "caractères", model: "Modèle", serverUnreachable: "Serveur injoignable", errorPrefix: "Erreur",
+    userMsg: "Voici la facture à analyser :",
+    system: `Tu es un assistant comptable expert. Quand on te soumet le texte d'une facture, tu extrais et structures systématiquement les informations suivantes :
+
+**INFORMATIONS GÉNÉRALES**
+- Numéro de facture
+- Date d'émission
+- Date d'échéance / conditions de paiement
+
+**FOURNISSEUR**
+- Raison sociale
+- SIRET / SIREN
+- Adresse
+
+**CLIENT**
+- Raison sociale
+- Référence client si présente
+
+**MONTANTS**
+- Montant HT total
+- Taux de TVA (et montant TVA)
+- Montant TTC
+- Acompte / reste à payer si mentionné
+
+**LIGNES DE DÉTAIL** (tableau condensé)
+
+**PAIEMENT**
+- IBAN / RIB
+- Mode de paiement
+
+**POINTS D'ATTENTION** (anomalies, mentions manquantes, incohérences de calcul)
+
+Réponds de façon claire et structurée. Si une information est absente, indique "Non mentionné".`,
+    example: `FACTURE N° 2024-1147
+Date d'émission : 03/12/2024
+Date d'échéance : 02/01/2025 (30 jours nets)
+
+FOURNISSEUR
+Agence Web Pixel SAS
+12 rue de la République, 69002 Lyon
+SIRET : 823 456 789 00021
+TVA intracom : FR12 823456789
+
+CLIENT
+Boulangerie Du Soleil SARL
+45 avenue Foch, 31000 Toulouse
+Réf. client : CLI-0892
+
+DÉSIGNATION                          QTÉ    PU HT      TOTAL HT
+Création site vitrine WordPress         1   2 400,00   2 400,00
+Intégration module réservation en ligne 1     800,00     800,00
+Formation administrateur (4h)           1     320,00     320,00
+Maintenance mensuelle (déc. 2024)       1     120,00     120,00
+
+                              SOUS-TOTAL HT    3 640,00
+                              TVA 20%            728,00
+                              TOTAL TTC        4 368,00
+
+Mode de règlement : Virement bancaire
+IBAN : FR76 3000 6000 0112 3456 7890 189
+BIC : CMCIFRPP
+
+Pénalités de retard : 3× taux légal. Escompte pour paiement anticipé : néant.`
+  },
+
+  de: {
+    logoTag: "Rechnungsextraktion",
+    statusConnecting: "verbinde…", statusOnline: "online", statusOffline: "offline", statusThinking: "analysiere…",
+    labelInput: "Rohe Rechnung", labelOutput: "Strukturierte Extraktion",
+    placeholder: `Fügen Sie hier den Rohtext Ihrer Rechnung ein…\n\nBeispiel:\nRECHNUNG NR. 2024-0892\nDatum: 15.11.2024\nLieferant: ACME GmbH — USt-IdNr. DE123456789\nKunde: Mein Unternehmen GmbH\n\nBeschreibung          Menge   Einzelpreis   Gesamt\nBeratungsleistung       3       850,00      2.550,00\nSoftwarelizenz          1       490,00        490,00\n\nNettobetrag                    3.040,00\nMwSt. 19%                        577,60\nBruttobetrag                   3.617,60\n\nIBAN: DE89 3704 0044 0532 0130 00\nZahlungsziel: 30 Tage`,
+    exampleChip: "📄 Beispiel laden", btnClear: "Löschen", btnAnalyse: "Rechnung analysieren →",
+    emptyText: "Ergebnisse erscheinen hier — Beträge, MwSt., Lieferant, Fälligkeit und erkannte Anomalien.",
+    footerLeft: "Lokale Infrastruktur · Daten werden nicht an Dritte weitergegeben",
+    generatedIn: "Generiert in", characters: "Zeichen", model: "Modell", serverUnreachable: "Server nicht erreichbar", errorPrefix: "Fehler",
+    userMsg: "Hier ist die zu analysierende Rechnung:",
+    system: `Du bist ein erfahrener Buchhaltungsassistent. Wenn du den Text einer Rechnung erhältst, extrahierst und strukturierst du systematisch folgende Informationen:
+
+**ALLGEMEINE INFORMATIONEN**
+- Rechnungsnummer
+- Ausstellungsdatum
+- Fälligkeitsdatum / Zahlungsbedingungen
+
+**LIEFERANT**
+- Firmenname
+- USt-IdNr. / Handelsregisternummer
+- Adresse
+
+**KUNDE**
+- Firmenname
+- Kundennummer falls vorhanden
+
+**BETRÄGE**
+- Nettobetrag gesamt
+- MwSt.-Satz (und MwSt.-Betrag)
+- Bruttobetrag
+- Anzahlung / Restbetrag falls erwähnt
+
+**POSITIONEN** (kompakte Tabelle)
+
+**ZAHLUNG**
+- IBAN / Bankverbindung
+- Zahlungsart
+
+**HINWEISE** (Anomalien, fehlende Angaben, Rechenfehler)
+
+Antworte klar und strukturiert. Falls eine Information fehlt, schreibe "Nicht angegeben".`,
+    example: `RECHNUNG NR. 2024-1147
+Ausstellungsdatum: 03.12.2024
+Fälligkeitsdatum: 02.01.2025 (30 Tage netto)
+
+LIEFERANT
+Pixel Webagentur GmbH
+Republikstraße 12, 69002 Lyon
+USt-IdNr.: DE823456789
+
+KUNDE
+Sonnenbäckerei GmbH
+Fochstraße 45, 31000 Toulouse
+Kundennr.: CLI-0892
+
+BESCHREIBUNG                              MENGE   EP NETTO     GESAMT
+WordPress-Präsentationswebsite               1    2.400,00   2.400,00
+Integration Online-Buchungsmodul             1      800,00     800,00
+Administratorschulung (4h)                   1      320,00     320,00
+Monatliche Wartung (Dez. 2024)               1      120,00     120,00
+
+                              NETTOBETRAG    3.640,00
+                              MwSt. 19%        691,60
+                              BRUTTOBETRAG   4.331,60
+
+Zahlungsart: Überweisung
+IBAN: DE89 3704 0044 0532 0130 00
+BIC: COBADEFFXXX
+
+Verzugszinsen: 3x gesetzlicher Zinssatz. Skonto: keines.`
+  }
+};
+
+let currentLang = 'en';
+let streaming = false;
+let startTime = null;
+
+const inputEl     = document.getElementById("invoiceInput");
+const analyseBtn  = document.getElementById("analyseBtn");
+const resultArea  = document.getElementById("resultArea");
+const statusDot   = document.getElementById("statusDot");
+const statusText  = document.getElementById("statusText");
+const resultMeta  = document.getElementById("resultMeta");
+const footerRight = document.getElementById("footerRight");
+
+inputEl.addEventListener("input", () => { analyseBtn.disabled = !inputEl.value.trim() || streaming; });
+
+function setLang(lang) {
+  currentLang = lang;
+  const t = T[lang];
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.textContent === lang.toUpperCase()));
+  document.getElementById('logoTag').textContent = t.logoTag;
+  document.getElementById('labelInput').textContent = t.labelInput;
+  document.getElementById('labelOutput').textContent = t.labelOutput;
+  inputEl.placeholder = t.placeholder;
+  document.getElementById('exampleChip').textContent = t.exampleChip;
+  document.getElementById('btnClear').textContent = t.btnClear;
+  analyseBtn.textContent = t.btnAnalyse;
+  document.getElementById('footerLeft').textContent = t.footerLeft;
+  const emptyText = document.getElementById('emptyText');
+  if (emptyText) emptyText.textContent = t.emptyText;
+  if (statusDot.classList.contains('online')) statusText.textContent = t.statusOnline;
+  else if (statusDot.classList.contains('thinking')) statusText.textContent = t.statusThinking;
+}
+
+function setStatus(cls, key) {
+  statusDot.className = "status-dot " + cls;
+  statusText.textContent = T[currentLang][key];
+}
+
+async function init() {
+  inputEl.placeholder = T.en.placeholder;
+  try {
+    const r = await fetch(`${API_URL}/models`, { headers: { Authorization: `Bearer ${API_KEY}` } });
+    if (!r.ok) throw new Error(r.status);
+    setStatus("online", "statusOnline");
+    footerRight.textContent = T[currentLang].model + ": " + MODEL;
+    analyseBtn.disabled = !inputEl.value.trim();
+  } catch(e) {
+    setStatus("", "statusOffline");
+    footerRight.textContent = T[currentLang].serverUnreachable;
+  }
+}
+
+async function analyse() {
+  const text = inputEl.value.trim();
+  if (!text || streaming) return;
+  const t = T[currentLang];
+  streaming = true;
+  analyseBtn.disabled = true;
+  setStatus("thinking", "statusThinking");
+  startTime = Date.now();
+  resultMeta.textContent = "";
+  resultArea.innerHTML = "";
+  const block = document.createElement("div");
+  block.className = "result-content";
+  resultArea.appendChild(block);
+  const cursor = document.createElement("span");
+  cursor.className = "cursor";
+  block.appendChild(cursor);
+  let full = "";
+  try {
+    const resp = await fetch(`${API_URL}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${API_KEY}` },
+      body: JSON.stringify({ model: MODEL, messages: [{ role: "system", content: t.system }, { role: "user", content: `${t.userMsg}\n\n${text}` }], stream: true, max_tokens: 1200, temperature: 0.2 })
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") break;
+        try { const delta = JSON.parse(data).choices?.[0]?.delta?.content || ""; full += delta; block.textContent = full; block.appendChild(cursor); resultArea.scrollTop = resultArea.scrollHeight; } catch {}
+      }
+    }
+    cursor.remove(); block.textContent = full;
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    resultMeta.textContent = `${t.generatedIn} ${elapsed}s · ${full.length} ${t.characters}`;
+  } catch(e) {
+    cursor.remove();
+    block.innerHTML = `<span style="color:var(--error)">${T[currentLang].errorPrefix}: ${e.message}</span>`;
+  }
+  streaming = false;
+  analyseBtn.disabled = false;
+  setStatus("online", "statusOnline");
+}
+
+function clearAll() {
+  const t = T[currentLang];
+  inputEl.value = "";
+  analyseBtn.disabled = true;
+  resultArea.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p id="emptyText">${t.emptyText}</p></div>`;
+  resultMeta.textContent = "";
+}
+
+function fillExample() {
+  inputEl.value = T[currentLang].example;
+  analyseBtn.disabled = !inputEl.value.trim() || streaming;
+  inputEl.focus();
+}
+
+init();
+</script>
+</body>
+</html>

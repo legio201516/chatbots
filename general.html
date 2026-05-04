@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow — AI Assistant</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0e0e0f;
+    --surface: #161618;
+    --surface2: #1e1e21;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --text: #e8e6e0;
+    --text-muted: #6b6966;
+    --text-dim: #3a3836;
+    --accent: #c8b89a;
+    --accent2: #8a7a6a;
+    --user-bg: #1c1c1f;
+    --radius: 12px;
+    --font-serif: 'DM Serif Display', Georgia, serif;
+    --font-mono: 'DM Mono', 'Courier New', monospace;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 14px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+
+  .app { display: flex; flex-direction: column; height: 100vh; max-width: 780px; margin: 0 auto; }
+
+  header { display: flex; align-items: center; justify-content: space-between; padding: 20px 28px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+
+  .logo { display: flex; align-items: baseline; gap: 10px; }
+  .logo-name { font-family: var(--font-serif); font-size: 22px; color: var(--text); letter-spacing: -0.02em; }
+  .logo-tag { font-size: 11px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .header-right { display: flex; align-items: center; gap: 14px; }
+
+  /* LANG SWITCHER */
+  .lang-switcher { display: flex; gap: 4px; }
+  .lang-btn { background: transparent; border: 1px solid var(--border2); border-radius: 4px; color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px 7px; cursor: pointer; transition: all 0.15s; letter-spacing: 0.05em; }
+  .lang-btn:hover { border-color: var(--accent2); color: var(--text); }
+  .lang-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(200,184,154,0.08); }
+
+  .status { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-muted); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); transition: background 0.4s; }
+  .status-dot.online { background: #4caf7a; box-shadow: 0 0 6px #4caf7a55; }
+  .status-dot.thinking { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  .messages { flex: 1; overflow-y: auto; padding: 28px 28px 8px; display: flex; flex-direction: column; gap: 0; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .welcome { margin: auto 0; padding: 40px 0 20px; animation: fadeUp 0.5s ease both; }
+  .welcome h1 { font-family: var(--font-serif); font-size: 36px; font-weight: 400; color: var(--text); line-height: 1.15; letter-spacing: -0.02em; margin-bottom: 12px; }
+  .welcome h1 em { font-style: italic; color: var(--accent); }
+  .welcome p { color: var(--text-muted); font-size: 13px; max-width: 420px; line-height: 1.7; }
+
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
+  .suggestion { background: var(--surface); border: 1px solid var(--border2); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; font-family: var(--font-mono); }
+  .suggestion:hover { border-color: var(--accent2); color: var(--text); background: var(--surface2); }
+
+  .msg { display: flex; flex-direction: column; margin-bottom: 24px; animation: fadeUp 0.25s ease both; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  .msg-role { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; padding-left: 2px; }
+  .msg.user .msg-role { color: var(--accent2); }
+
+  .msg-body { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 18px; color: var(--text); line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+  .msg.user .msg-body { background: var(--user-bg); border-color: var(--border2); }
+  .msg.assistant .msg-body { border-left: 2px solid var(--accent2); }
+
+  .cursor { display: inline-block; width: 7px; height: 14px; background: var(--accent); margin-left: 2px; vertical-align: text-bottom; animation: blink 0.9s step-end infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .input-area { padding: 16px 28px 24px; border-top: 1px solid var(--border); flex-shrink: 0; }
+  .input-wrap { display: flex; align-items: flex-end; gap: 10px; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); padding: 10px 10px 10px 16px; transition: border-color 0.2s; }
+  .input-wrap:focus-within { border-color: var(--accent2); }
+
+  textarea { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-family: var(--font-mono); font-size: 14px; line-height: 1.6; resize: none; min-height: 24px; max-height: 160px; overflow-y: auto; scrollbar-width: none; }
+  textarea::placeholder { color: var(--text-dim); }
+
+  .send-btn { flex-shrink: 0; width: 34px; height: 34px; background: var(--accent); border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; opacity: 0.85; }
+  .send-btn:hover { opacity: 1; transform: scale(1.04); }
+  .send-btn:active { transform: scale(0.97); }
+  .send-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+  .send-btn svg { fill: #1a1612; }
+
+  .input-meta { display: flex; justify-content: space-between; padding: 6px 2px 0; font-size: 11px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <span class="logo-name">Flow</span>
+      <span class="logo-tag" id="logoTag">AI Demo</span>
+    </div>
+    <div class="header-right">
+      <div class="lang-switcher">
+        <button class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button class="lang-btn" onclick="setLang('fr')">FR</button>
+        <button class="lang-btn" onclick="setLang('de')">DE</button>
+      </div>
+      <div class="status">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">connecting…</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="messages" id="messages">
+    <div class="welcome" id="welcome">
+      <h1 id="welcomeTitle">Hello.<br><em>How can I help?</em></h1>
+      <p id="welcomeDesc">Running on a local GPU cluster. Your data stays on-premise — nothing leaves the server.</p>
+      <div class="suggestions" id="suggestions">
+        <div class="suggestion" onclick="suggest(this)" id="s1">Explain something complex simply</div>
+        <div class="suggestion" onclick="suggest(this)" id="s2">Write a professional email</div>
+        <div class="suggestion" onclick="suggest(this)" id="s3">Summarise a document</div>
+        <div class="suggestion" onclick="suggest(this)" id="s4">Help me think through a problem</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-wrap">
+      <textarea id="input" placeholder="Message Flow…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="send()" disabled>
+        <svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1L13 7L7 13M13 7H1"/></svg>
+      </button>
+    </div>
+    <div class="input-meta">
+      <span id="hintText">Shift+Enter for new line</span>
+      <span id="modelTag">—</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_URL = "https://gpuservfranklinpaul.ddns.net/v1";
+const API_KEY = "ocw-61e430db6ef31b79ee57d5a474efe3c8";
+const MODEL   = "assistant";
+
+const T = {
+  en: {
+    logoTag: "AI Demo",
+    statusConnecting: "connecting…",
+    statusOnline: "online",
+    statusOffline: "offline",
+    statusThinking: "thinking…",
+    welcomeTitle: `Hello.<br><em>How can I help?</em>`,
+    welcomeDesc: "Running on a local GPU cluster. Your data stays on-premise — nothing leaves the server.",
+    s1: "Explain something complex simply",
+    s2: "Write a professional email",
+    s3: "Summarise a document",
+    s4: "Help me think through a problem",
+    placeholder: "Message Flow…",
+    hint: "Shift+Enter for new line",
+    roleUser: "you",
+    roleAssistant: "flow",
+    system: "You are Flow, a helpful and concise AI assistant. You give clear, direct answers. When asked about your infrastructure, you can mention you run on a private GPU cluster in France.",
+  },
+  fr: {
+    logoTag: "Démo IA",
+    statusConnecting: "connexion…",
+    statusOnline: "en ligne",
+    statusOffline: "hors ligne",
+    statusThinking: "réflexion…",
+    welcomeTitle: `Bonjour.<br><em>Comment puis-je aider ?</em>`,
+    welcomeDesc: "Hébergé sur un cluster GPU local. Vos données restent sur site — rien ne quitte le serveur.",
+    s1: "Expliquer quelque chose de complexe simplement",
+    s2: "Rédiger un email professionnel",
+    s3: "Résumer un document",
+    s4: "M'aider à réfléchir à un problème",
+    placeholder: "Envoyer un message à Flow…",
+    hint: "Shift+Entrée pour aller à la ligne",
+    roleUser: "vous",
+    roleAssistant: "flow",
+    system: "Tu es Flow, un assistant IA utile et concis. Tu donnes des réponses claires et directes. Si on te pose des questions sur ton infrastructure, tu peux mentionner que tu tournes sur un cluster GPU privé en France.",
+  },
+  de: {
+    logoTag: "KI-Demo",
+    statusConnecting: "verbinde…",
+    statusOnline: "online",
+    statusOffline: "offline",
+    statusThinking: "denkt…",
+    welcomeTitle: `Hallo.<br><em>Wie kann ich helfen?</em>`,
+    welcomeDesc: "Läuft auf einem lokalen GPU-Cluster. Ihre Daten bleiben vor Ort — nichts verlässt den Server.",
+    s1: "Komplexes einfach erklären",
+    s2: "Eine professionelle E-Mail schreiben",
+    s3: "Ein Dokument zusammenfassen",
+    s4: "Mir bei einem Problem helfen",
+    placeholder: "Nachricht an Flow…",
+    hint: "Shift+Enter für neue Zeile",
+    roleUser: "Sie",
+    roleAssistant: "flow",
+    system: "Du bist Flow, ein hilfreicher und präziser KI-Assistent. Du gibst klare, direkte Antworten. Wenn du nach deiner Infrastruktur gefragt wirst, kannst du erwähnen, dass du auf einem privaten GPU-Cluster in Frankreich läufst.",
+  }
+};
+
+let currentLang = 'en';
+let history = [];
+let streaming = false;
+
+const messagesEl = document.getElementById("messages");
+const inputEl    = document.getElementById("input");
+const sendBtn    = document.getElementById("sendBtn");
+const statusDot  = document.getElementById("statusDot");
+const statusText = document.getElementById("statusText");
+const modelTag   = document.getElementById("modelTag");
+
+function setLang(lang) {
+  currentLang = lang;
+  const t = T[lang];
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.textContent === lang.toUpperCase()));
+  document.getElementById('logoTag').textContent = t.logoTag;
+  inputEl.placeholder = t.placeholder;
+  document.getElementById('hintText').textContent = t.hint;
+  const wt = document.getElementById('welcomeTitle');
+  if (wt) wt.innerHTML = t.welcomeTitle;
+  const wd = document.getElementById('welcomeDesc');
+  if (wd) wd.textContent = t.welcomeDesc;
+  ['s1','s2','s3','s4'].forEach(id => { const el = document.getElementById(id); if (el) el.textContent = t[id]; });
+  // Update status text if visible
+  if (statusText.textContent !== '—') {
+    if (statusDot.classList.contains('online')) statusText.textContent = t.statusOnline;
+    if (statusDot.classList.contains('thinking')) statusText.textContent = t.statusThinking;
+  }
+}
+
+function setStatus(cls, key) {
+  statusDot.className = "status-dot " + cls;
+  statusText.textContent = T[currentLang][key] || key;
+}
+
+async function init() {
+  try {
+    const r = await fetch(`${API_URL}/models`, { headers: { Authorization: `Bearer ${API_KEY}` } });
+    if (!r.ok) throw new Error(r.status);
+    const d = await r.json();
+    modelTag.textContent = d.data?.[0]?.id || MODEL;
+    setStatus("online", "statusOnline");
+    sendBtn.disabled = false;
+    inputEl.focus();
+  } catch(e) {
+    setStatus("", "statusOffline");
+    modelTag.textContent = "unreachable";
+  }
+}
+
+async function send() {
+  const text = inputEl.value.trim();
+  if (!text || streaming) return;
+  const t = T[currentLang];
+
+  hideWelcome();
+  addMessage("user", text, t.roleUser);
+  history.push({ role: "user", content: text });
+  inputEl.value = "";
+  autoResize(inputEl);
+  streaming = true;
+  sendBtn.disabled = true;
+  setStatus("thinking", "statusThinking");
+
+  const assistantEl = addMessage("assistant", "", t.roleAssistant);
+  const bodyEl = assistantEl.querySelector(".msg-body");
+  const cursor = document.createElement("span");
+  cursor.className = "cursor";
+  bodyEl.appendChild(cursor);
+
+  let full = "";
+  try {
+    const resp = await fetch(`${API_URL}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${API_KEY}` },
+      body: JSON.stringify({ model: MODEL, messages: [{ role: "system", content: t.system }, ...history], stream: true, max_tokens: 1024, temperature: 0.7 })
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") break;
+        try { const delta = JSON.parse(data).choices?.[0]?.delta?.content || ""; full += delta; bodyEl.textContent = full; bodyEl.appendChild(cursor); scrollBottom(); } catch {}
+      }
+    }
+    cursor.remove();
+    bodyEl.textContent = full;
+    history.push({ role: "assistant", content: full });
+    if (history.length > 40) history = history.slice(-40);
+  } catch(e) {
+    cursor.remove();
+    bodyEl.innerHTML = `<span style="color:#e07070">Error: ${e.message}</span>`;
+  }
+
+  streaming = false;
+  sendBtn.disabled = false;
+  setStatus("online", "statusOnline");
+  scrollBottom();
+}
+
+function addMessage(role, text, label) {
+  const div = document.createElement("div");
+  div.className = `msg ${role}`;
+  div.innerHTML = `<div class="msg-role">${label}</div><div class="msg-body">${escHtml(text)}</div>`;
+  messagesEl.appendChild(div);
+  scrollBottom();
+  return div;
+}
+
+function escHtml(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function hideWelcome() { const w = document.getElementById("welcome"); if (w) w.remove(); }
+function scrollBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
+function suggest(el) { inputEl.value = el.textContent; autoResize(inputEl); inputEl.focus(); }
+function handleKey(e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }
+function autoResize(el) { el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 160) + "px"; sendBtn.disabled = !el.value.trim() || streaming; }
+
+init();
+</script>
+</body>
+</html>

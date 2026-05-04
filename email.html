@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thread — Email Summariser</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0b0d14; --surface: #111520; --surface2: #181c2a;
+    --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.11);
+    --text: #dde3f0; --text-muted: #5a6280; --text-dim: #2e3450;
+    --accent: #4f7dff; --accent2: #3a5cd4; --accent-glow: rgba(79,125,255,0.15);
+    --user-bg: #131828; --radius: 10px;
+    --font-display: 'Syne', system-ui, sans-serif;
+    --font-mono: 'Geist Mono', 'Courier New', monospace;
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font-mono); font-size: 13px; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+  body::before { content: ''; position: fixed; inset: 0; background-image: linear-gradient(rgba(79,125,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(79,125,255,0.03) 1px, transparent 1px); background-size: 40px 40px; pointer-events: none; z-index: 0; }
+  .app { position: relative; z-index: 1; display: flex; flex-direction: column; height: 100vh; max-width: 800px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 18px 28px 14px; border-bottom: 1px solid var(--border2); flex-shrink: 0; }
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo-icon { width: 32px; height: 32px; background: var(--accent); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 15px; }
+  .logo-text { display: flex; flex-direction: column; }
+  .logo-name { font-family: var(--font-display); font-size: 17px; font-weight: 700; color: var(--text); line-height: 1; letter-spacing: -0.01em; }
+  .logo-tag { font-size: 10px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: 2px; }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+  .lang-switcher { display: flex; gap: 4px; }
+  .lang-btn { background: transparent; border: 1px solid var(--border2); border-radius: 4px; color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; padding: 2px 7px; cursor: pointer; transition: all 0.15s; letter-spacing: 0.05em; }
+  .lang-btn:hover { border-color: var(--accent2); color: var(--text); }
+  .lang-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+  .model-badge { font-size: 11px; color: var(--accent); border: 1px solid rgba(79,125,255,0.35); border-radius: 4px; padding: 2px 8px; background: var(--accent-glow); }
+  .status { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); transition: background 0.4s; }
+  .status-dot.online { background: #4f7dff; box-shadow: 0 0 8px rgba(79,125,255,0.5); }
+  .status-dot.thinking { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .messages { flex: 1; overflow-y: auto; padding: 24px 28px 8px; display: flex; flex-direction: column; gap: 0; scrollbar-width: thin; scrollbar-color: var(--border2) transparent; }
+  .messages::-webkit-scrollbar { width: 3px; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+  .welcome { margin: auto 0; padding: 40px 0 20px; animation: fadeUp 0.5s ease both; }
+  .welcome-kicker { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+  .welcome h1 { font-family: var(--font-display); font-size: 34px; font-weight: 700; color: var(--text); line-height: 1.15; letter-spacing: -0.03em; margin-bottom: 14px; }
+  .welcome p { color: var(--text-muted); font-size: 13px; max-width: 400px; line-height: 1.75; }
+  .mode-pills { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; }
+  .pill { background: var(--surface2); border: 1px solid var(--border2); border-radius: 20px; padding: 6px 14px; font-size: 12px; color: var(--text-muted); cursor: pointer; transition: all 0.15s; }
+  .pill:hover, .pill.active { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+  .mode-desc { margin-top: 14px; font-size: 12px; color: var(--text-dim); min-height: 18px; }
+  .msg { display: flex; flex-direction: column; margin-bottom: 20px; animation: fadeUp 0.25s ease both; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .msg-role { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 5px; padding-left: 2px; }
+  .msg.user .msg-role { color: var(--accent2); }
+  .msg-body { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 17px; color: var(--text); line-height: 1.75; white-space: pre-wrap; word-break: break-word; }
+  .msg.user .msg-body { background: var(--user-bg); border-color: var(--border2); max-height: 200px; overflow: hidden; position: relative; }
+  .msg.assistant .msg-body { border-left: 2px solid var(--accent); background: var(--surface2); }
+  .cursor { display: inline-block; width: 6px; height: 13px; background: var(--accent); margin-left: 2px; vertical-align: text-bottom; animation: blink 0.8s step-end infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  .input-area { padding: 14px 28px 22px; border-top: 1px solid var(--border); flex-shrink: 0; }
+  .input-wrap { display: flex; align-items: flex-end; gap: 8px; background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); padding: 10px 10px 10px 16px; transition: border-color 0.2s, box-shadow 0.2s; }
+  .input-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  textarea { flex: 1; background: transparent; border: none; outline: none; color: var(--text); font-family: var(--font-mono); font-size: 13px; line-height: 1.6; resize: none; min-height: 24px; max-height: 200px; overflow-y: auto; scrollbar-width: none; }
+  textarea::placeholder { color: var(--text-dim); }
+  .send-btn { flex-shrink: 0; width: 34px; height: 34px; background: var(--accent); border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.15s; }
+  .send-btn:hover { background: var(--accent2); transform: scale(1.04); }
+  .send-btn:active { transform: scale(0.97); }
+  .send-btn:disabled { opacity: 0.25; cursor: not-allowed; transform: none; }
+  .input-meta { display: flex; justify-content: space-between; padding: 6px 2px 0; font-size: 11px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">✉</div>
+      <div class="logo-text">
+        <span class="logo-name">Thread</span>
+        <span class="logo-tag" id="logoTag">Email Summariser</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="lang-switcher">
+        <button class="lang-btn active" onclick="setLang('en')">EN</button>
+        <button class="lang-btn" onclick="setLang('fr')">FR</button>
+        <button class="lang-btn" onclick="setLang('de')">DE</button>
+      </div>
+      <span class="model-badge">14B · assistant</span>
+      <div class="status">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">connecting…</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="messages" id="messages">
+    <div class="welcome" id="welcome">
+      <div class="welcome-kicker" id="welcomeKicker">✉ Thread · AI Summariser</div>
+      <h1 id="welcomeTitle">Your emails,<br>summarised.</h1>
+      <p id="welcomeDesc">Paste a full email thread. The model extracts key points and action items.</p>
+      <div class="mode-pills" id="modePills">
+        <div class="pill active" data-mode="summary" onclick="setMode('summary', this)" id="pill-summary">Quick summary</div>
+        <div class="pill" data-mode="actions" onclick="setMode('actions', this)" id="pill-actions">Action items</div>
+        <div class="pill" data-mode="reply" onclick="setMode('reply', this)" id="pill-reply">Draft a reply</div>
+        <div class="pill" data-mode="formal" onclick="setMode('formal', this)" id="pill-formal">Full analysis</div>
+      </div>
+      <div class="mode-desc" id="modeDesc">5 to 8 line summary: context, decisions, open points.</div>
+    </div>
+  </div>
+
+  <div class="input-area">
+    <div class="input-wrap">
+      <textarea id="input" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="send-btn" id="sendBtn" onclick="send()" disabled>
+        <svg width="14" height="14" viewBox="0 0 14 14"><path d="M7 1L13 7L7 13M13 7H1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+      </button>
+    </div>
+    <div class="input-meta">
+      <span id="hintText">Shift+Enter for a new line</span>
+      <span id="modeIndicator">mode: quick summary</span>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_URL = "https://gpuservfranklinpaul.ddns.net/v1";
+const API_KEY = "ocw-61e430db6ef31b79ee57d5a474efe3c8";
+const MODEL   = "assistant";
+
+const T = {
+  en: {
+    logoTag: "Email Summariser",
+    statusConnecting: "connecting…", statusOnline: "online", statusOffline: "offline", statusThinking: "analysing…",
+    welcomeKicker: "✉ Thread · AI Summariser",
+    welcomeTitle: "Your emails,<br>summarised.",
+    welcomeDesc: "Paste a full email thread. The model extracts key points and action items.",
+    placeholder: "Paste your email thread here…",
+    hint: "Shift+Enter for a new line",
+    modeIndicatorPrefix: "mode:",
+    roleUser: "▸ you",
+    roleAssistant: "◈ thread",
+    errorPrefix: "Error",
+    modes: {
+      summary: { label: "Quick summary",  desc: "5 to 8 line summary: context, decisions, open points." },
+      actions: { label: "Action items",   desc: "List of tasks and follow-ups, with owner where mentioned." },
+      reply:   { label: "Draft a reply",  desc: "Propose a draft reply adapted to the thread's context." },
+      formal:  { label: "Full analysis",  desc: "Complete analysis: context, timeline, commitments, risks." }
+    },
+    systems: {
+      summary: `You are an expert at summarising professional email threads.
+When given a thread, produce:
+
+**CONTEXT** (1-2 sentences) — What is this thread about? Who are the participants?
+
+**SUMMARY** — Key points as concise bullet points.
+
+**DECISIONS MADE** — What was agreed (or "No formal decision reached").
+
+**OPEN POINTS** — What still needs to be resolved.
+
+Be direct and precise.`,
+      actions: `You are an assistant specialised in extracting action items from email threads.
+When given a thread, produce a structured list:
+
+**IMMEDIATE ACTIONS** (do now)
+- [ ] Task — Owner — Deadline if mentioned
+
+**TO SCHEDULE**
+- [ ] Task — Owner — Context
+
+**TO MONITOR / FOLLOW UP**
+- Points that need a follow-up or a nudge
+
+Be exhaustive but only list concrete, actionable items.`,
+      reply: `You are an expert professional communication assistant.
+When given an email thread:
+1. Briefly identify who needs to reply and to what
+2. Propose a professional, courteous and concise draft reply
+3. Mark elements to personalise in brackets: [Your name], [Exact date], etc.
+
+Match the tone of the thread (formal/informal).`,
+      formal: `You are an expert at analysing professional correspondence.
+For the submitted thread, produce a complete analysis:
+
+**CONTEXT & PARTIES**
+Subject, participants, key dates
+
+**TIMELINE**
+How the exchange evolved
+
+**COMMITMENTS & AGREEMENTS**
+What was promised or agreed, by whom
+
+**FRICTION POINTS** (if any)
+Disagreements, ambiguities, unspoken tensions
+
+**RECOMMENDATIONS**
+Suggested next steps
+
+Structured format, professional tone.`
+    }
+  },
+
+  fr: {
+    logoTag: "Synthèse de Mails",
+    statusConnecting: "connexion…", statusOnline: "en ligne", statusOffline: "hors ligne", statusThinking: "analyse…",
+    welcomeKicker: "✉ Thread · Synthèse IA",
+    welcomeTitle: "Vos mails,<br>résumés.",
+    welcomeDesc: "Collez un thread entier. Le modèle en extrait les points clés et les actions à faire.",
+    placeholder: "Collez votre thread ici…",
+    hint: "Shift+Entrée pour aller à la ligne",
+    modeIndicatorPrefix: "mode :",
+    roleUser: "▸ vous",
+    roleAssistant: "◈ thread",
+    errorPrefix: "Erreur",
+    modes: {
+      summary: { label: "Synthèse rapide",      desc: "Résumé en 5 à 8 lignes : contexte, décisions, points ouverts." },
+      actions: { label: "Actions à faire",      desc: "Liste des tâches et suivis, avec responsable si mentionné." },
+      reply:   { label: "Préparer une réponse", desc: "Propose un brouillon adapté au contexte du thread." },
+      formal:  { label: "Analyse formelle",     desc: "Analyse complète : contexte, chronologie, engagements, risques." }
+    },
+    systems: {
+      summary: `Tu es un assistant expert en synthèse de communications professionnelles.
+Quand on te soumet un thread de mails, tu produis :
+
+**CONTEXTE** (1-2 phrases) — De quoi parle ce thread ? Qui sont les interlocuteurs ?
+
+**RÉSUMÉ** — Les points essentiels en bullet points concis.
+
+**DÉCISIONS PRISES** — Ce qui a été acté (ou "Aucune décision formelle").
+
+**POINTS OUVERTS** — Ce qui reste à trancher.
+
+Sois direct et précis.`,
+      actions: `Tu es un assistant spécialisé dans l'extraction de tâches depuis des échanges de mails.
+Quand on te soumet un thread, tu produis une liste structurée :
+
+**ACTIONS IMMÉDIATES** (à faire maintenant)
+- [ ] Tâche — Responsable — Échéance si mentionnée
+
+**ACTIONS À PLANIFIER**
+- [ ] Tâche — Responsable — Contexte
+
+**À SURVEILLER / RELANCER**
+- Points qui nécessitent un suivi ou une relance
+
+Sois exhaustif mais ne liste que des actions concrètes.`,
+      reply: `Tu es un assistant rédactionnel expert en communication professionnelle.
+Quand on te soumet un thread de mails, tu :
+1. Identifies brièvement qui doit répondre et à quoi
+2. Proposes un brouillon de réponse professionnel, courtois et concis
+3. Indiques entre crochets les éléments à personnaliser : [Votre nom], [Date précise], etc.
+
+Adapte le ton au thread (formel/informel).`,
+      formal: `Tu es un assistant expert en analyse de correspondances professionnelles.
+Pour le thread soumis, produis une analyse complète :
+
+**CONTEXTE & PARTIES**
+Sujet, interlocuteurs, dates importantes
+
+**CHRONOLOGIE**
+Reconstitution de l'évolution de l'échange
+
+**ENGAGEMENTS & ACCORDS**
+Ce qui a été promis ou accepté, par qui
+
+**POINTS DE FRICTION** (le cas échéant)
+Désaccords, ambiguïtés, non-dits
+
+**RECOMMANDATIONS**
+Prochaines étapes suggérées
+
+Format structuré, ton professionnel.`
+    }
+  },
+
+  de: {
+    logoTag: "E-Mail-Zusammenfassung",
+    statusConnecting: "verbinde…", statusOnline: "online", statusOffline: "offline", statusThinking: "analysiere…",
+    welcomeKicker: "✉ Thread · KI-Zusammenfassung",
+    welcomeTitle: "Ihre E-Mails,<br>zusammengefasst.",
+    welcomeDesc: "Fügen Sie einen vollständigen E-Mail-Thread ein. Das Modell extrahiert die wichtigsten Punkte und Aufgaben.",
+    placeholder: "Fügen Sie Ihren E-Mail-Thread hier ein…",
+    hint: "Shift+Enter für neue Zeile",
+    modeIndicatorPrefix: "Modus:",
+    roleUser: "▸ Sie",
+    roleAssistant: "◈ thread",
+    errorPrefix: "Fehler",
+    modes: {
+      summary: { label: "Kurzzusammenfassung", desc: "5 bis 8 Zeilen: Kontext, Entscheidungen, offene Punkte." },
+      actions: { label: "Aufgabenliste",        desc: "Liste der Aufgaben und Follow-ups, mit Verantwortlichem." },
+      reply:   { label: "Antwort entwerfen",    desc: "Einen Antwortentwurf passend zum Thread-Kontext erstellen." },
+      formal:  { label: "Vollständige Analyse", desc: "Vollständige Analyse: Kontext, Zeitplan, Verpflichtungen, Risiken." }
+    },
+    systems: {
+      summary: `Du bist ein Experte für die Zusammenfassung professioneller E-Mail-Threads.
+Wenn du einen Thread erhältst, erstelle:
+
+**KONTEXT** (1-2 Sätze) — Worum geht es in diesem Thread? Wer sind die Teilnehmer?
+
+**ZUSAMMENFASSUNG** — Kernpunkte als prägnante Aufzählungspunkte.
+
+**GETROFFENE ENTSCHEIDUNGEN** — Was wurde beschlossen (oder "Keine formale Entscheidung getroffen").
+
+**OFFENE PUNKTE** — Was noch geklärt werden muss.
+
+Sei direkt und präzise.`,
+      actions: `Du bist ein Assistent, der auf die Extraktion von Aufgaben aus E-Mail-Threads spezialisiert ist.
+Wenn du einen Thread erhältst, erstelle eine strukturierte Liste:
+
+**SOFORTIGE MASSNAHMEN** (jetzt erledigen)
+- [ ] Aufgabe — Verantwortlicher — Frist falls erwähnt
+
+**ZU PLANEN**
+- [ ] Aufgabe — Verantwortlicher — Kontext
+
+**ZU ÜBERWACHEN / NACHFASSEN**
+- Punkte, die ein Follow-up oder eine Erinnerung benötigen
+
+Sei vollständig, liste aber nur konkrete, umsetzbare Aufgaben auf.`,
+      reply: `Du bist ein Experte für professionelle Kommunikation.
+Wenn du einen E-Mail-Thread erhältst:
+1. Identifiziere kurz, wer auf was antworten muss
+2. Schlage einen professionellen, höflichen und prägnanten Antwortentwurf vor
+3. Markiere zu personalisierende Elemente in eckigen Klammern: [Ihr Name], [Genaues Datum], etc.
+
+Passe den Ton dem Thread an (formell/informell).`,
+      formal: `Du bist ein Experte für die Analyse professioneller Korrespondenz.
+Für den eingereichten Thread erstelle eine vollständige Analyse:
+
+**KONTEXT & PARTEIEN**
+Thema, Teilnehmer, wichtige Daten
+
+**ZEITVERLAUF**
+Wie sich der Austausch entwickelt hat
+
+**VERPFLICHTUNGEN & VEREINBARUNGEN**
+Was von wem versprochen oder vereinbart wurde
+
+**KONFLIKTPUNKTE** (falls vorhanden)
+Meinungsverschiedenheiten, Unklarheiten, Unausgesprochenes
+
+**EMPFEHLUNGEN**
+Vorgeschlagene nächste Schritte
+
+Strukturiertes Format, professioneller Ton.`
+    }
+  }
+};
+
+let currentLang = 'en';
+let currentMode = 'summary';
+let history = [];
+let streaming = false;
+
+const messagesEl    = document.getElementById("messages");
+const inputEl       = document.getElementById("input");
+const sendBtn       = document.getElementById("sendBtn");
+const statusDot     = document.getElementById("statusDot");
+const statusText    = document.getElementById("statusText");
+const modeIndicator = document.getElementById("modeIndicator");
+
+function setLang(lang) {
+  currentLang = lang;
+  const t = T[lang];
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b.textContent === lang.toUpperCase()));
+  document.getElementById('logoTag').textContent = t.logoTag;
+  inputEl.placeholder = t.placeholder;
+  document.getElementById('hintText').textContent = t.hint;
+  const wk = document.getElementById('welcomeKicker'); if (wk) wk.textContent = t.welcomeKicker;
+  const wt = document.getElementById('welcomeTitle');  if (wt) wt.innerHTML = t.welcomeTitle;
+  const wd = document.getElementById('welcomeDesc');   if (wd) wd.textContent = t.welcomeDesc;
+  // Update pill labels
+  ['summary','actions','reply','formal'].forEach(m => {
+    const el = document.getElementById('pill-' + m);
+    if (el) el.textContent = t.modes[m].label;
+  });
+  // Update mode desc
+  const md = document.getElementById('modeDesc');
+  if (md) md.textContent = t.modes[currentMode].desc;
+  modeIndicator.textContent = t.modeIndicatorPrefix + " " + t.modes[currentMode].label;
+  if (statusDot.classList.contains('online')) statusText.textContent = t.statusOnline;
+  else if (statusDot.classList.contains('thinking')) statusText.textContent = t.statusThinking;
+}
+
+function setMode(mode, el) {
+  currentMode = mode;
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  if (el) el.classList.add('active');
+  const t = T[currentLang];
+  modeIndicator.textContent = t.modeIndicatorPrefix + " " + t.modes[mode].label;
+  const md = document.getElementById('modeDesc');
+  if (md) md.textContent = t.modes[mode].desc;
+}
+
+function setStatus(cls, key) {
+  statusDot.className = "status-dot " + cls;
+  statusText.textContent = T[currentLang][key];
+}
+
+async function init() {
+  inputEl.placeholder = T.en.placeholder;
+  try {
+    const r = await fetch(`${API_URL}/models`, { headers: { Authorization: `Bearer ${API_KEY}` } });
+    if (!r.ok) throw new Error(r.status);
+    setStatus("online", "statusOnline");
+    sendBtn.disabled = !inputEl.value.trim();
+    inputEl.focus();
+  } catch(e) {
+    setStatus("", "statusOffline");
+  }
+}
+
+async function send() {
+  const text = inputEl.value.trim();
+  if (!text || streaming) return;
+  const t = T[currentLang];
+
+  hideWelcome();
+  const userDiv = document.createElement("div");
+  userDiv.className = "msg user";
+  const bodyEl = document.createElement("div");
+  bodyEl.className = "msg-body" + (text.length > 400 ? " collapsed" : "");
+  bodyEl.textContent = text;
+  userDiv.innerHTML = `<div class="msg-role">${t.roleUser} · ${t.modes[currentMode].label}</div>`;
+  userDiv.appendChild(bodyEl);
+  messagesEl.appendChild(userDiv);
+  history.push({ role: "user", content: text });
+  inputEl.value = "";
+  autoResize(inputEl);
+  scrollBottom();
+
+  streaming = true;
+  sendBtn.disabled = true;
+  setStatus("thinking", "statusThinking");
+
+  const assistantDiv = document.createElement("div");
+  assistantDiv.className = "msg assistant";
+  assistantDiv.innerHTML = `<div class="msg-role">${t.roleAssistant}</div>`;
+  const aBody = document.createElement("div");
+  aBody.className = "msg-body";
+  const cursor = document.createElement("span");
+  cursor.className = "cursor";
+  aBody.appendChild(cursor);
+  assistantDiv.appendChild(aBody);
+  messagesEl.appendChild(assistantDiv);
+  scrollBottom();
+
+  let full = "";
+  try {
+    const resp = await fetch(`${API_URL}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${API_KEY}` },
+      body: JSON.stringify({ model: MODEL, messages: [{ role: "system", content: t.systems[currentMode] }, ...history], stream: true, max_tokens: 1024, temperature: 0.3 })
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const line of decoder.decode(value, { stream: true }).split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") break;
+        try { const delta = JSON.parse(data).choices?.[0]?.delta?.content || ""; full += delta; aBody.textContent = full; aBody.appendChild(cursor); scrollBottom(); } catch {}
+      }
+    }
+    cursor.remove(); aBody.textContent = full;
+    history.push({ role: "assistant", content: full });
+    if (history.length > 20) history = history.slice(-20);
+  } catch(e) {
+    cursor.remove();
+    aBody.innerHTML = `<span style="color:#e07070">${T[currentLang].errorPrefix}: ${e.message}</span>`;
+  }
+
+  streaming = false;
+  sendBtn.disabled = false;
+  setStatus("online", "statusOnline");
+  scrollBottom();
+}
+
+function hideWelcome() { const w = document.getElementById("welcome"); if (w) w.remove(); }
+function scrollBottom() { messagesEl.scrollTop = messagesEl.scrollHeight; }
+function handleKey(e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }
+function autoResize(el) { el.style.height = "auto"; el.style.height = Math.min(el.scrollHeight, 200) + "px"; sendBtn.disabled = !el.value.trim() || streaming; }
+
+init();
+</script>
+</body>
+</html>
